@@ -237,28 +237,32 @@ class Updater(tk.Toplevel):
 		
 	def poll(self):
 		line = ''
-		while self.process.poll() == None:
-			output = self.process.stdout.read(1).decode('utf8').replace('\r','')
-			if output != '':
-				if self.func[0] == 1:
-					self.log(output, 'output')
-					if output == '\n':
-						pkgname = line.split(' ', 1)[0] # strip package name from start of line
-						if (len(pkgname) > 0) and (pkgname != 'Package') and (pkgname.replace('-','') != ''):
-							self.pkglist.insert("end", pkgname) # add to package list
-						line = ''
+		while True:
+			output = self.process.stdout.read(1).decode('utf8')
+			if output:
+				output = output.replace('\r','')
+				if output != '':
+					if self.func[0] == 1:
+						self.log(output, 'output')
+						if output == '\n':
+							pkgname = line.split(' ', 1)[0] # strip package name from start of line
+							if (len(pkgname) > 0) and (pkgname != 'Package') and (pkgname.replace('-','') != ''):
+								self.pkglist.insert("end", pkgname) # add to package list
+							line = ''
+						else:
+							line += output
+					elif self.func[0] == 4:
+						if output == '\n':
+							pkgname, description = line.split(' ', 1)
+							self.log(pkgname, self.link_man.add(lambda p=pkgname: self.install(p)))
+							self.log(' %s\n' % description, 'output')
+							line = ''
+						else:
+							line += output
 					else:
-						line += output
-				elif self.func[0] == 4:
-					if output == '\n':
-						pkgname, description = line.split(' ', 1)
-						self.log(pkgname, self.link_man.add(lambda p=pkgname: self.install(p)))
-						self.log(' %s\n' % description, 'output')
-						line = ''
-					else:
-						line += output
-				else:
-					self.log(output, 'output')
+						self.log(output, 'output')
+			elif self.process.poll() != None:
+				break
 ##			else:
 ##				output = self.process.stderr.read(1).decode('utf8').replace("\r","")
 ##				if output != '':
