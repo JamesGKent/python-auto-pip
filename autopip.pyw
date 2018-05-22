@@ -2,13 +2,14 @@
 
 try:
 	import tkinter as tk
-	from tkinter import ttk, messagebox
+	from tkinter import ttk, messagebox, filedialog
 	from tkinter import scrolledtext
 	from threading import Thread
 except ImportError:
 	import Tkinter as tk
 	import ttk
 	import tkMessageBox as messagebox
+	import tkFileDialog as filedialog
 	import ScrolledText as scrolledtext
 	from threading import Thread
 	
@@ -21,6 +22,13 @@ startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW # to hide the console
 procargs = {"stdout":subprocess.PIPE, "startupinfo":startupinfo, "bufsize":0,} # pipe output, hide console and unbuffered
 
 appfont = ("ariel",14)
+
+SCAN = 1
+UPDATE_PIP = 2
+UPDATE_ALL = 3
+UPDATE = 4
+SEARCH = 5
+INSTALL = 6
 
 class HyperlinkManager(object):
     """A class to easily add clickable hyperlinks to Text areas.
@@ -63,86 +71,58 @@ class HyperlinkManager(object):
                 self.links[tag]()
                 return
 
-class Launcher(tk.Tk):
+class Updater(tk.Tk):
 	def __init__(self):
 		tk.Tk.__init__(self)
-		self.title("Pip auto update launcher")
+		self.title("Pip auto updater")
 		self.style = ttk.Style()
 		self.style.configure('.', font=appfont)
-		tk.Label(self, text="Python version:")
+		
+		tk.Label(self, text="Python version:").grid(column=1, row=1, sticky="nesw")
 		self.verbox = ttk.Combobox(self)
-		self.verbox.pack(fill="x", expand=True)
-
-		ttk.Button(self, text="Run", command=self.launch).pack(fill="x", expand=True)
-
-		self.updater = None
+		self.verbox.grid(column=2, row=1, sticky="nesw")
+		self.verbox.bind("<<ComboboxSelected>>", self.select_version)
 		
-		self.find_versions()
-
-	def find_versions(self):
-		versions = []
-		for directory in os.listdir("C:\\"): # windows specific, need to find better way to find python installs
-			if directory.lower().startswith("python"):
-				ver = directory[6:] # get numbers from enf of python name
-				if len(ver) == 2:
-					version = "Python %s.%s" % (ver[0],ver[1])
-					versions.append(version)
-		self.verbox.configure(values=versions, state="readonly")
-
-	def launch(self):
-		i = self.verbox.current()
-		if i != -1: # if there is a selection
-			version = self.verbox.get()[7:]
-			if not self.updater:
-				self.updater = Updater(self, version)
-			else:
-				messagebox.showerror("Error", "Can only run one update task as a time", parent=self)
-
-class Updater(tk.Toplevel):
-	def __init__(self, parent, version):
-		tk.Toplevel.__init__(self, parent)
-		self.parent = parent
-		self.title("Pip auto updater - Python %s" % version)
-		self.version = version
-		vercheck = str(int(float(version) * 10))
-		
-		tk.Label(self, text="Exclusions:").grid(column=1, row=1, sticky="nesw")
+		tk.Label(self, text="Exclusions:").grid(column=1, row=2, sticky="nesw")
 		self.excl_list = tk.Listbox(self)
-		self.excl_list.grid(column=1, row=2, sticky="nesw")
+		self.excl_list.grid(column=1, row=3, sticky="nesw")
 		
-		tk.Label(self, text="Outdated:").grid(column=2, row=1, sticky="nesw")
+		tk.Label(self, text="Outdated:").grid(column=2, row=2, sticky="nesw")
 		self.pkglist = tk.Listbox(self)
-		self.pkglist.grid(column=2, row=2, sticky="nesw")
+		self.pkglist.grid(column=2, row=3, sticky="nesw")
 
 		self.output = scrolledtext.ScrolledText(self, state="disabled")
 		self.output.tag_config("output", foreground="blue")
 		self.output.tag_config("stderr", foreground="red")
-		self.output.grid(column=3, row=2, columnspan=2, sticky="nesw")
+		self.output.grid(column=3, row=3, columnspan=2, sticky="nesw")
 		
 		self.link_man = HyperlinkManager(self.output)
 
-		self.grid_rowconfigure(2, weight=1)
+		self.grid_rowconfigure(3, weight=1)
 		self.grid_columnconfigure(1, weight=1)
 		self.grid_columnconfigure(2, weight=1)
 		self.grid_columnconfigure(3, weight=5)
 		self.grid_columnconfigure(4, weight=5)
 		
 		f = tk.Frame(self)
-		f.grid(column=1, row=3, columnspan=2, rowspan=2, sticky="nesw")
+		f.grid(column=1, row=4, columnspan=2, rowspan=2, sticky="nesw")
 		f.grid_columnconfigure(1, weight=1)
 		self.search_box = tk.Entry(f)
 		self.search_box.bind("<Return>", self.search)
 		self.search_box.grid(column=1, row=1, sticky="nesw")
 		self.b4 = ttk.Button(f, text="Search", command=self.search, width=6)
 		self.b4.grid(column=2, row=1, sticky="nesw")
+		
+		self.b5 = ttk.Button(f, text="Install from wheel file", command=self.install_wheel)
+		self.b5.grid(column=1, row=2, columnspan=2, sticky="nesw")
 
 		self.b1 = ttk.Button(self, text="Scan", command=self.scan)
-		self.b1.grid(column=3, row=3, columnspan=2, sticky="nesw")
+		self.b1.grid(column=3, row=4, columnspan=2, sticky="nesw")
 		
 		self.b2 = ttk.Button(self, text="Update Pip", command=self.update_pip)
-		self.b2.grid(column=3, row=4, sticky="nesw")
+		self.b2.grid(column=3, row=5, sticky="nesw")
 		self.b3 = ttk.Button(self, text="Update All", command=self.update_all)
-		self.b3.grid(column=4, row=4, sticky="nesw")
+		self.b3.grid(column=4, row=5, sticky="nesw")
 		
 		# popups for managing exclusions
 		self.popup_add = tk.Menu(self.pkglist, tearoff=0)
@@ -152,18 +132,6 @@ class Updater(tk.Toplevel):
 		self.pkglist.bind("<Button-3>", self.show_popup_add)
 		self.excl_list.bind("<Button-3>", self.show_popup_remove)
 		
-		# windows specific, should fix this...
-		# find the python installations scripts directory
-		self.pypath = None
-		for directory in os.listdir("C:\\"):
-			if directory.lower().startswith("python"):
-				if directory.endswith(vercheck):
-					self.pypath = os.path.join("C:\\", directory, "scripts")
-					break
-		if not self.pypath:
-			messagebox.showerror("Error", "Python version %s cannot be found" % version, parent=self)
-			return
-		
 		# load any exclusions that shouldn't be updated
 		self.exclusions_changed = False
 		if os.path.isfile("pip_exclusions.txt"):
@@ -172,10 +140,49 @@ class Updater(tk.Toplevel):
 					ex = line.rstrip()
 					if ex != '':
 						self.excl_list.insert("end", ex)
+						
+		self.pypath = None
 
 		self.process = None
 		self.thread = None
 		self.func = None
+		
+		self.find_versions()
+		try:
+			self.verbox.current(0) # select first install by default
+			self.select_version()
+		except tk.TclError:
+			messagebox.showerror("Error", "Unable to locate any python installations", parent=self)
+		
+	def find_versions(self):
+		versions = []
+		for directory in os.listdir("C:\\"): # windows specific, need to find better way to find python installs
+			if directory.lower().startswith("python"):
+				ver = directory[6:] # get numbers from enf of python name
+				if len(ver) == 2:
+					version = "Python %s.%s" % (ver[0],ver[1])
+					versions.append(version)
+		self.verbox.configure(values=versions, state="readonly")
+		
+	def select_version(self, event=None):
+		# windows specific, should fix this...
+		# find the python installations scripts directory
+		i = self.verbox.current()
+		if i != -1: # if there is a selection
+			self.version = self.verbox.get()[7:]
+			self.title("Pip auto updater - Python %s" % self.version)
+			vercheck = str(int(float(self.version) * 10))
+			self.pypath = None
+			for directory in os.listdir("C:\\"):
+				if directory.lower().startswith("python"):
+					if directory.endswith(vercheck):
+						self.pypath = os.path.join("C:\\", directory, "scripts")
+						break
+			if not self.pypath:
+				messagebox.showerror("Error", "Python version %s cannot be found" % self.version, parent=self)
+				return
+		else:
+			self.title("Pip auto updater")
 		
 	def show_popup_add(self, event): # for managing exclusions
 		self.pkglist.select_clear(0,"end") #clear selection
@@ -210,17 +217,21 @@ class Updater(tk.Toplevel):
 					ex_file.write("%s\n" % item)
 
 	def disable_all(self):
+		self.verbox.configure(state='disabled')
 		self.b1.configure(state="disabled")
 		self.b2.configure(state="disabled")
 		self.b3.configure(state="disabled")
 		self.b4.configure(state="disabled")
+		self.b5.configure(state="disabled")
 		self.search_box.configure(state="disabled")
 
 	def enable_all(self):
+		self.verbox.configure(state='readonly')
 		self.b1.configure(state="normal")
 		self.b2.configure(state="normal")
 		self.b3.configure(state="normal")
 		self.b4.configure(state="normal")
+		self.b5.configure(state="normal")
 		self.search_box.configure(state="normal")
 
 	def log(self, msg, tag=None):
@@ -243,16 +254,20 @@ class Updater(tk.Toplevel):
 				output = data.decode('utf8')#.replace('\r','')
 				if output != '':
 					output = output.replace('\r', '')
-					if self.func[0] == 1:
-						self.log(output, 'output')
+					if self.func[0] == SCAN:
 						if output == '\n':
-							pkgname = line.split(' ', 1)[0] # strip package name from start of line
+							pkgname, description = line.split(' ', 1)
 							if (len(pkgname) > 0) and (pkgname != 'Package') and (pkgname.replace('-','') != ''):
 								self.pkglist.insert("end", pkgname) # add to package list
+								tag = self.link_man.add(lambda p=pkgname: self.update(p))
+							else:
+								tag = 'output'
+							self.log(pkgname, tag)
+							self.log(' %s\n' % description, 'output')
 							line = ''
 						else:
 							line += output
-					elif self.func[0] == 4:
+					elif self.func[0] == SEARCH:
 						if output == '\n':
 							pkgname, description = line.split(' ', 1)
 							self.log(pkgname, self.link_man.add(lambda p=pkgname: self.install(p)))
@@ -267,12 +282,18 @@ class Updater(tk.Toplevel):
 						break
 			except:
 				print(data)
-		if self.func[0] == 3:
+		if self.func[0] == UPDATE_ALL:
 			for num in range(0, self.pkglist.size()):
 				if self.pkglist.get(num) == self.func[1]:
 					self.pkglist.delete(num)
 					break
 			self.after(10, self.update_all)
+			
+		if self.func[0] == UPDATE:
+			for num in range(0, self.pkglist.size()):
+				if self.pkglist.get(num) == self.func[1]:
+					self.pkglist.delete(num)
+					break
 		self.func = None
 		self.enable_all()
 		
@@ -281,7 +302,7 @@ class Updater(tk.Toplevel):
 			command = "%s search %s" % (os.path.join(self.pypath, "pip"), self.search_box.get())
 			self.log(">%s\n" % command)
 			self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-			self.func = [4, None]
+			self.func = [SEARCH, None]
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
 			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
@@ -290,19 +311,23 @@ class Updater(tk.Toplevel):
 		if not self.func:
 			result = messagebox.askyesno("Install?", "Install package: %s" % package, parent=self)
 			if result:
-				print("Install")
 				command = "%s install %s" % (os.path.join(self.pypath, "pip"), package)
 				self.log(">%s\n" % command)
 				self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-				self.func = [5, None]
+				self.func = [INSTALL, None]
 				self.start_poll()
+				
+	def install_wheel(self):
+		res = filedialog.askopenfilename(filetypes=(('Wheel files', '*.whl'),), parent=self, title="Select wheel")
+		if res:
+			self.install("\"%s\"" % res) # add quotes in case spaces in path
 
 	def scan(self):
 		if not self.func:
 			command = "%s list --outdated --format=columns" % (os.path.join(self.pypath, "pip"),)
 			self.log(">%s\n" % command)
 			self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-			self.func = [1, None]
+			self.func = [SCAN, None]
 			self.pkglist.delete(0,"end")
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
@@ -313,7 +338,7 @@ class Updater(tk.Toplevel):
 			command = "py -%s -m pip install --upgrade pip" % self.version
 			self.log(">%s\n" % command)
 			self.process = subprocess.Popen(command, **procargs)
-			self.func = [2, 'pip']
+			self.func = [UPDATE_PIP, 'pip']
 			self.start_poll()
 			for num in range(0, self.pkglist.size()):
 				if self.pkglist.get(num) == "pip":
@@ -343,19 +368,28 @@ class Updater(tk.Toplevel):
 					return
 				else:
 					break
-			command = "%s install %s --upgrade" % (os.path.join(self.pypath, "pip.exe"), pkg)
+			command = "%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), pkg)
 			self.log(">%s\n" % command)
 			self.process = subprocess.Popen(command, **procargs)
-			self.func = [3, pkg]
+			self.func = [UPDATE_ALL, pkg]
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
 			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
+			
+	def update(self, package):
+		if not self.func:
+			result = messagebox.askyesno("Update?", "Update package: %s" % package, parent=self)
+			if result:
+				command = "%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), package)
+				self.log(">%s\n" % command)
+				self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
+				self.func = [UPDATE, package]
+				self.start_poll()
 
 	def destroy(self):
 		self.save_exclusions()
-		self.parent.updater = None
-		tk.Toplevel.destroy(self)
+		tk.Tk.destroy(self)
 
 if __name__ == "__main__":
-	launcher = Launcher()
-	launcher.mainloop()
+	updater = Updater()
+	updater.mainloop()
