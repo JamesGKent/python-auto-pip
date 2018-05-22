@@ -19,7 +19,7 @@ import subprocess
 startupinfo = subprocess.STARTUPINFO()
 startupinfo.dwFlags |= subprocess.STARTF_USESHOWWINDOW # to hide the console
 
-procargs = {"stdout":subprocess.PIPE, "startupinfo":startupinfo, "bufsize":0,} # pipe output, hide console and unbuffered
+procargs = {"stdout":subprocess.PIPE, "stderr":subprocess.PIPE, "startupinfo":startupinfo, "bufsize":0,} # pipe output, hide console and unbuffered
 
 appfont = ("ariel",14)
 
@@ -107,7 +107,7 @@ class Updater(tk.Tk):
 		f = tk.Frame(self)
 		f.grid(column=1, row=4, columnspan=2, rowspan=2, sticky="nesw")
 		f.grid_columnconfigure(1, weight=1)
-		self.search_box = tk.Entry(f)
+		self.search_box = ttk.Entry(f, font=appfont)
 		self.search_box.bind("<Return>", self.search)
 		self.search_box.grid(column=1, row=1, sticky="nesw")
 		self.b4 = ttk.Button(f, text="Search", command=self.search, width=6)
@@ -217,22 +217,13 @@ class Updater(tk.Tk):
 					ex_file.write("%s\n" % item)
 
 	def disable_all(self):
-		self.verbox.configure(state='disabled')
-		self.b1.configure(state="disabled")
-		self.b2.configure(state="disabled")
-		self.b3.configure(state="disabled")
-		self.b4.configure(state="disabled")
-		self.b5.configure(state="disabled")
-		self.search_box.configure(state="disabled")
+		for control in [self.verbox, self.b1, self.b2, self.b3, self.b4, self.b5, self.search_box]:
+			control.configure(state='disabled')
 
 	def enable_all(self):
 		self.verbox.configure(state='readonly')
-		self.b1.configure(state="normal")
-		self.b2.configure(state="normal")
-		self.b3.configure(state="normal")
-		self.b4.configure(state="normal")
-		self.b5.configure(state="normal")
-		self.search_box.configure(state="normal")
+		for control in [self.b1, self.b2, self.b3, self.b4, self.b5, self.search_box]:
+			control.configure(state='normal')
 
 	def log(self, msg, tag=None):
 		self.output.configure(state="normal")
@@ -251,7 +242,7 @@ class Updater(tk.Tk):
 		while True:
 			data = self.process.stdout.read(1)
 			try:
-				output = data.decode('utf8')#.replace('\r','')
+				output = data.decode('utf8')
 				if output != '':
 					output = output.replace('\r', '')
 					if self.func[0] == SCAN:
@@ -282,40 +273,50 @@ class Updater(tk.Tk):
 						break
 			except:
 				print(data)
-		if self.func[0] == UPDATE_ALL:
-			for num in range(0, self.pkglist.size()):
-				if self.pkglist.get(num) == self.func[1]:
-					self.pkglist.delete(num)
+		while True:
+			data = self.process.stderr.read(1)
+			try:
+				output = data.decode('utf8')
+				if output != '':
+					output = output.replace('\r', '')
+					self.log(output, 'stderr')
+				else:
 					break
-			self.after(10, self.update_all)
-			
-		if self.func[0] == UPDATE:
-			for num in range(0, self.pkglist.size()):
-				if self.pkglist.get(num) == self.func[1]:
-					self.pkglist.delete(num)
-					break
+			except:
+				pass
+
+		if self.process.poll() == 0:
+			if self.func[0] == UPDATE_ALL or self.func[0] == UPDATE:
+				for num in range(0, self.pkglist.size()):
+					if self.pkglist.get(num) == self.func[1]:
+						self.pkglist.delete(num)
+						break
+			if self.func[0] == UPDATE_ALL:
+				self.after(10, self.update_all)
+
 		self.func = None
 		self.enable_all()
 		
-	def search(self, event=None):
+	def run_command(self, command, func):
 		if not self.func:
-			command = "%s search %s" % (os.path.join(self.pypath, "pip"), self.search_box.get())
 			self.log(">%s\n" % command)
 			self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-			self.func = [SEARCH, None]
+			self.func = func
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
 			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
+		
+	def search(self, event=None):
+		val = self.search_box.get()
+		if val.strip() != '':
+			self.run_command("%s search %s" % (os.path.join(self.pypath, "pip"), val), [SEARCH, None])
+		else:
+			messagebox.showinfo("Error", "No package to search for", parent=self)
 			
 	def install(self, package):
-		if not self.func:
-			result = messagebox.askyesno("Install?", "Install package: %s" % package, parent=self)
-			if result:
-				command = "%s install %s" % (os.path.join(self.pypath, "pip"), package)
-				self.log(">%s\n" % command)
-				self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-				self.func = [INSTALL, None]
-				self.start_poll()
+		result = messagebox.askyesno("Install?", "Install package: %s" % package, parent=self)
+		if result:
+			self.run_command("%s install %s" % (os.path.join(self.pypath, "pip"), package), [INSTALL, None])
 				
 	def install_wheel(self):
 		res = filedialog.askopenfilename(filetypes=(('Wheel files', '*.whl'),), parent=self, title="Select wheel")
@@ -323,68 +324,41 @@ class Updater(tk.Tk):
 			self.install("\"%s\"" % res) # add quotes in case spaces in path
 
 	def scan(self):
-		if not self.func:
-			command = "%s list --outdated --format=columns" % (os.path.join(self.pypath, "pip"),)
-			self.log(">%s\n" % command)
-			self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-			self.func = [SCAN, None]
-			self.pkglist.delete(0,"end")
-			self.start_poll()
-		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
+		self.run_command("%s list --outdated --format=columns" % (os.path.join(self.pypath, "pip"),), [SCAN, None])
+		self.pkglist.delete(0,"end")
 
 	def update_pip(self):
-		if not self.func:
-			command = "py -%s -m pip install --upgrade pip" % self.version
-			self.log(">%s\n" % command)
-			self.process = subprocess.Popen(command, **procargs)
-			self.func = [UPDATE_PIP, 'pip']
-			self.start_poll()
-			for num in range(0, self.pkglist.size()):
-				if self.pkglist.get(num) == "pip":
-					self.pkglist.delete(num)
-					break
-		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
+		self.run_command("py -%s -m pip install --upgrade pip" % self.version, [UPDATE_PIP, 'pip'])
+		for num in range(0, self.pkglist.size()):
+			if self.pkglist.get(num) == "pip":
+				self.pkglist.delete(num)
+				break
 
 	def update_all(self):
-		if not self.func:
-			if "pip" in self.pkglist.get(0,"end"):
-				if messagebox.askyesno("Update pip?", "Pip is out of date.\nUpdate this now?", parent=self):
-					self.update_pip()
+		if "pip" in self.pkglist.get(0,"end"):
+			if messagebox.askyesno("Update pip?", "Pip is out of date.\nUpdate this now?", parent=self):
+				self.update_pip()
+			return
+		if self.pkglist.size() == 0:
+			return
+		i = 0
+		while True:
+			pkg = self.pkglist.get(i)
+			if pkg == "pip":
+				i += 1
+			elif pkg in self.excl_list.get(0, "end"):
+				self.log(">Skipping %s\n" % pkg)
+				self.pkglist.delete(i)
+			elif i >= self.pkglist.size():
 				return
-			if self.pkglist.size() == 0:
-				return
-			i = 0
-			while True:
-				pkg = self.pkglist.get(i)
-				if pkg == "pip":
-					i += 1
-				elif pkg in self.excl_list.get(0, "end"):
-					self.log(">Skipping %s\n" % pkg)
-					self.pkglist.delete(i)
-					#i += 1
-				elif i >= self.pkglist.size():
-					return
-				else:
-					break
-			command = "%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), pkg)
-			self.log(">%s\n" % command)
-			self.process = subprocess.Popen(command, **procargs)
-			self.func = [UPDATE_ALL, pkg]
-			self.start_poll()
-		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
+			else:
+				break
+		self.run_command("%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), pkg), [UPDATE_ALL, pkg])
 			
 	def update(self, package):
-		if not self.func:
-			result = messagebox.askyesno("Update?", "Update package: %s" % package, parent=self)
-			if result:
-				command = "%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), package)
-				self.log(">%s\n" % command)
-				self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
-				self.func = [UPDATE, package]
-				self.start_poll()
+		result = messagebox.askyesno("Update?", "Update package: %s" % package, parent=self)
+		if result:
+			self.run_command("%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), package), [UPDATE, package])
 
 	def destroy(self):
 		self.save_exclusions()
