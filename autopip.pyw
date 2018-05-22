@@ -31,6 +31,7 @@ appfont = ("ariel",14)
 class PythonInstalls():
 	def __init__(self):
 		self.installs = {}
+		self.selected = None
 		
 	def __search_key(self, key):
 		subkeys, values, lastmod = winreg.QueryInfoKey(key)
@@ -55,25 +56,54 @@ class PythonInstalls():
 	def find(self):
 		if winreg:
 			self.__search_keys()
-		else: # TO DO
-			pass
+		else: # assume both are present, let user decide
+			self.installs = {'2':'python2', '3':'python3'}
 		res = list(self.installs.keys())
 		res.sort()
 		return res
+		
+	def select(self, version):
+		self.selected = version
 	
-	def path(self, version):
+	def path(self, version=None):
+		if version == None:
+			version = self.selected
 		if version in self.installs:
 			return self.installs[version]
 		if len(version) > 7:
 			return self.installs[version[7:]]
 			
-	def scriptspath(self, version):
+	def scriptspath(self, version=None):
+		if version == None:
+			version = self.selected
 		p = self.path(version)
 		if winreg:
 			if p:
 				return os.path.join(p, 'Scripts')
 		else: # TO DO
 			pass
+			
+	def pip(self, version=None):
+		if version == None:
+			version = self.selected
+		if winreg:
+			return os.path.join(self.scriptspath(version), 'pip')
+		else: # assume only one ver of each major version
+			if sys.version_info[0] == 3:
+				return 'pip3'
+			else:
+				return 'pip'
+			
+	def python(self, version=None):
+		if version == None:
+			version = self.selected
+		if winreg:
+			return os.path.join(self.path(version), 'python')
+		else: # assume only one ver of each major version
+			if sys.version_info[0] == 3:
+				return 'python3'
+			else:
+				return 'python2'
 
 class HyperlinkManager(object):
     """A class to easily add clickable hyperlinks to Text areas.
@@ -192,14 +222,12 @@ class Updater(tk.Tk):
 					ex = line.rstrip()
 					if ex != '':
 						self.excl_list.insert("end", ex)
-						
-		self.pypath = None
 
 		self.process = None
 		self.thread = None
 		self.func = None
 		
-		self.pythoninstalls = PythonInstalls()
+		self.installs = PythonInstalls()
 		self.find_versions()
 		try:
 			self.verbox.current(0) # select first install by default
@@ -208,7 +236,7 @@ class Updater(tk.Tk):
 			messagebox.showerror("Error", "Unable to locate any python installations", parent=self)
 		
 	def find_versions(self):
-		versions = self.pythoninstalls.find()
+		versions = self.installs.find()
 		named_versions = []
 		for ver in versions:
 			version = "Python %s" % ver
@@ -220,8 +248,9 @@ class Updater(tk.Tk):
 		if i != -1: # if there is a selection
 			self.version = self.verbox.get()
 			self.title("Pip auto updater - %s" % self.version)
-			self.pypath = self.pythoninstalls.scriptspath(self.version)
-			if not self.pypath:
+			self.installs.select(self.version)
+			pypath = self.installs.path()
+			if not pypath:
 				messagebox.showerror("Error", "%s cannot be found" % self.version, parent=self)
 				return
 		else:
@@ -343,7 +372,7 @@ class Updater(tk.Tk):
 	def run_command(self, command, func):
 		if not self.func:
 			self.log(">%s\n" % command)
-			self.process = subprocess.Popen(command, cwd=self.pypath, **procargs)
+			self.process = subprocess.Popen(command, cwd=self.installs.path(), **procargs)
 			self.func = func
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
@@ -352,14 +381,14 @@ class Updater(tk.Tk):
 	def search(self, event=None):
 		val = self.search_box.get()
 		if val.strip() != '':
-			self.run_command("%s search %s" % (os.path.join(self.pypath, "pip"), val), [SEARCH, None])
+			self.run_command("%s search %s" % (self.installs.pip(), val), [SEARCH, None])
 		else:
 			messagebox.showinfo("Error", "No package to search for", parent=self)
 			
 	def install(self, package):
 		result = messagebox.askyesno("Install?", "Install package: %s" % package, parent=self)
 		if result:
-			self.run_command("%s install %s" % (os.path.join(self.pypath, "pip"), package), [INSTALL, None])
+			self.run_command("%s install %s" % (self.installs.pip(), package), [INSTALL, None])
 				
 	def install_wheel(self):
 		res = filedialog.askopenfilename(filetypes=(('Wheel files', '*.whl'),), parent=self, title="Select wheel")
@@ -367,11 +396,11 @@ class Updater(tk.Tk):
 			self.install("\"%s\"" % res) # add quotes in case spaces in path
 
 	def scan(self):
-		self.run_command("%s list --outdated --format=columns" % (os.path.join(self.pypath, "pip"),), [SCAN, None])
+		self.run_command("%s list --outdated --format=columns" % self.installs.pip(), [SCAN, None])
 		self.pkglist.delete(0,"end")
 
 	def update_pip(self):
-		self.run_command("%s -m pip install --upgrade pip" % os.path.join(self.pythoninstalls.path(self.version), 'python'), [UPDATE_PIP, 'pip'])
+		self.run_command("%s -m pip install --upgrade pip" % self.installs.python(), [UPDATE_PIP, 'pip'])
 		for num in range(0, self.pkglist.size()):
 			if self.pkglist.get(num) == "pip":
 				self.pkglist.delete(num)
@@ -396,12 +425,12 @@ class Updater(tk.Tk):
 				return
 			else:
 				break
-		self.run_command("%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), pkg), [UPDATE_ALL, pkg])
+		self.run_command("%s install %s --upgrade" % (self.installs.pip(), pkg), [UPDATE_ALL, pkg])
 			
 	def update(self, package):
 		result = messagebox.askyesno("Update?", "Update package: %s" % package, parent=self)
 		if result:
-			self.run_command("%s install %s --upgrade" % (os.path.join(self.pypath, "pip"), package), [UPDATE, package])
+			self.run_command("%s install %s --upgrade" % (self.installs.pip(), package), [UPDATE, package])
 
 	def destroy(self):
 		self.save_exclusions()
