@@ -12,6 +12,11 @@ except ImportError:
 	import tkFileDialog as filedialog
 	import ScrolledText as scrolledtext
 	from threading import Thread
+
+try:
+	import winreg
+except ImportError:
+	winreg = None
 	
 import sys, os
 import subprocess
@@ -23,12 +28,52 @@ procargs = {"stdout":subprocess.PIPE, "stderr":subprocess.PIPE, "startupinfo":st
 
 appfont = ("ariel",14)
 
-SCAN = 1
-UPDATE_PIP = 2
-UPDATE_ALL = 3
-UPDATE = 4
-SEARCH = 5
-INSTALL = 6
+class PythonInstalls():
+	def __init__(self):
+		self.installs = {}
+		
+	def __search_key(self, key):
+		subkeys, values, lastmod = winreg.QueryInfoKey(key)
+
+		for i in range(0, subkeys):
+			ver = winreg.EnumKey(key, i)
+			subkey = winreg.OpenKey(key, '%s' % ver)
+			self.installs[ver] = winreg.QueryValue(subkey, 'InstallPath')
+		
+	def __search_keys(self):
+		try:
+			lmk = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Python\\PythonCore')
+			self.__search_key(lmk)
+		except FileNotFoundError:
+			pass
+		try:
+			cuk = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'SOFTWARE\\Python\\PythonCore')
+			self.__search_key(cuk)
+		except FileNotFoundError:
+			pass
+			
+	def find(self):
+		if winreg:
+			self.__search_keys()
+		else: # TO DO
+			pass
+		res = list(self.installs.keys())
+		res.sort()
+		return res
+	
+	def path(self, version):
+		if version in self.installs:
+			return self.installs[version]
+		if len(version) > 7:
+			return self.installs[version[7:]]
+			
+	def scriptspath(self, version):
+		p = self.path(version)
+		if winreg:
+			if p:
+				return os.path.join(p, 'Scripts')
+		else: # TO DO
+			pass
 
 class HyperlinkManager(object):
     """A class to easily add clickable hyperlinks to Text areas.
@@ -70,6 +115,13 @@ class HyperlinkManager(object):
             if (tag[:6] == "hyper-"):
                 self.links[tag]()
                 return
+
+SCAN = 1
+UPDATE_PIP = 2
+UPDATE_ALL = 3
+UPDATE = 4
+SEARCH = 5
+INSTALL = 6
 
 class Updater(tk.Tk):
 	def __init__(self):
@@ -147,6 +199,7 @@ class Updater(tk.Tk):
 		self.thread = None
 		self.func = None
 		
+		self.pythoninstalls = PythonInstalls()
 		self.find_versions()
 		try:
 			self.verbox.current(0) # select first install by default
@@ -155,31 +208,21 @@ class Updater(tk.Tk):
 			messagebox.showerror("Error", "Unable to locate any python installations", parent=self)
 		
 	def find_versions(self):
-		versions = []
-		for directory in os.listdir("C:\\"): # windows specific, need to find better way to find python installs
-			if directory.lower().startswith("python"):
-				ver = directory[6:] # get numbers from enf of python name
-				if len(ver) == 2:
-					version = "Python %s.%s" % (ver[0],ver[1])
-					versions.append(version)
-		self.verbox.configure(values=versions, state="readonly")
+		versions = self.pythoninstalls.find()
+		named_versions = []
+		for ver in versions:
+			version = "Python %s" % ver
+			named_versions.append(version)
+		self.verbox.configure(values=named_versions, state="readonly")
 		
 	def select_version(self, event=None):
-		# windows specific, should fix this...
-		# find the python installations scripts directory
 		i = self.verbox.current()
 		if i != -1: # if there is a selection
-			self.version = self.verbox.get()[7:]
-			self.title("Pip auto updater - Python %s" % self.version)
-			vercheck = str(int(float(self.version) * 10))
-			self.pypath = None
-			for directory in os.listdir("C:\\"):
-				if directory.lower().startswith("python"):
-					if directory.endswith(vercheck):
-						self.pypath = os.path.join("C:\\", directory, "scripts")
-						break
+			self.version = self.verbox.get()
+			self.title("Pip auto updater - %s" % self.version)
+			self.pypath = self.pythoninstalls.scriptspath(self.version)
 			if not self.pypath:
-				messagebox.showerror("Error", "Python version %s cannot be found" % self.version, parent=self)
+				messagebox.showerror("Error", "%s cannot be found" % self.version, parent=self)
 				return
 		else:
 			self.title("Pip auto updater")
@@ -328,7 +371,7 @@ class Updater(tk.Tk):
 		self.pkglist.delete(0,"end")
 
 	def update_pip(self):
-		self.run_command("py -%s -m pip install --upgrade pip" % self.version, [UPDATE_PIP, 'pip'])
+		self.run_command("%s -m pip install --upgrade pip" % os.path.join(self.pythoninstalls.path(self.version), 'python'), [UPDATE_PIP, 'pip'])
 		for num in range(0, self.pkglist.size()):
 			if self.pkglist.get(num) == "pip":
 				self.pkglist.delete(num)
