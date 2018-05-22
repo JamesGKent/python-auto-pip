@@ -1,6 +1,8 @@
 # python-auto-pip
 simple tkinter GUI to automate updating python pip packages
 
+![screenshot](./pip-updater.bmp)
+
 This simple python script will scan your computer for python installations (currently windows only)
 then select a version to look at updating packages for that version.  
 Tested with python versions 2.7 and 3.4, it is not required to run the script in the version of python you wish to update.
