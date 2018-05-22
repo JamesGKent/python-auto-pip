@@ -96,7 +96,7 @@ class Launcher(tk.Tk):
 			if not self.updater:
 				self.updater = Updater(self, version)
 			else:
-				messagebox.showerror("Error", "Can only run one update task as a time")
+				messagebox.showerror("Error", "Can only run one update task as a time", parent=self)
 
 class Updater(tk.Toplevel):
 	def __init__(self, parent, version):
@@ -124,8 +124,8 @@ class Updater(tk.Toplevel):
 		self.grid_rowconfigure(2, weight=1)
 		self.grid_columnconfigure(1, weight=1)
 		self.grid_columnconfigure(2, weight=1)
-		self.grid_columnconfigure(3, weight=3)
-		self.grid_columnconfigure(4, weight=3)
+		self.grid_columnconfigure(3, weight=5)
+		self.grid_columnconfigure(4, weight=5)
 		
 		f = tk.Frame(self)
 		f.grid(column=1, row=3, columnspan=2, rowspan=2, sticky="nesw")
@@ -161,7 +161,7 @@ class Updater(tk.Toplevel):
 					self.pypath = os.path.join("C:\\", directory, "scripts")
 					break
 		if not self.pypath:
-			messagebox.showerror("Error", "Python version %s cannot be found" % version)
+			messagebox.showerror("Error", "Python version %s cannot be found" % version, parent=self)
 			return
 		
 		# load any exclusions that shouldn't be updated
@@ -238,10 +238,11 @@ class Updater(tk.Toplevel):
 	def poll(self):
 		line = ''
 		while True:
-			output = self.process.stdout.read(1).decode('utf8')
-			if output:
-				output = output.replace('\r','')
+			data = self.process.stdout.read(1)
+			try:
+				output = data.decode('utf8')#.replace('\r','')
 				if output != '':
+					output = output.replace('\r', '')
 					if self.func[0] == 1:
 						self.log(output, 'output')
 						if output == '\n':
@@ -261,12 +262,11 @@ class Updater(tk.Toplevel):
 							line += output
 					else:
 						self.log(output, 'output')
-			elif self.process.poll() != None:
-				break
-##			else:
-##				output = self.process.stderr.read(1).decode('utf8').replace("\r","")
-##				if output != '':
-##					self.log(output, "stderr")
+				else:
+					if self.process.poll() != None:
+						break
+			except:
+				print(data)
 		if self.func[0] == 3:
 			for num in range(0, self.pkglist.size()):
 				if self.pkglist.get(num) == self.func[1]:
@@ -284,11 +284,11 @@ class Updater(tk.Toplevel):
 			self.func = [4, None]
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one")
+			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
 			
 	def install(self, package):
 		if not self.func:
-			result = messagebox.askyesno("Install?", "Install package: %s" % package)
+			result = messagebox.askyesno("Install?", "Install package: %s" % package, parent=self)
 			if result:
 				print("Install")
 				command = "%s install %s" % (os.path.join(self.pypath, "pip"), package)
@@ -306,7 +306,7 @@ class Updater(tk.Toplevel):
 			self.pkglist.delete(0,"end")
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one")
+			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
 
 	def update_pip(self):
 		if not self.func:
@@ -320,12 +320,12 @@ class Updater(tk.Toplevel):
 					self.pkglist.delete(num)
 					break
 		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one")
+			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
 
 	def update_all(self):
 		if not self.func:
 			if "pip" in self.pkglist.get(0,"end"):
-				if messagebox.askyesno("Update pip?", "Pip is out of date.\nUpdate this now?"):
+				if messagebox.askyesno("Update pip?", "Pip is out of date.\nUpdate this now?", parent=self):
 					self.update_pip()
 				return
 			if self.pkglist.size() == 0:
@@ -337,7 +337,8 @@ class Updater(tk.Toplevel):
 					i += 1
 				elif pkg in self.excl_list.get(0, "end"):
 					self.log(">Skipping %s\n" % pkg)
-					i += 1
+					self.pkglist.delete(i)
+					#i += 1
 				elif i >= self.pkglist.size():
 					return
 				else:
@@ -348,7 +349,7 @@ class Updater(tk.Toplevel):
 			self.func = [3, pkg]
 			self.start_poll()
 		else: # shouldn't happen, but cover it anyway
-			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one")
+			messagebox.showinfo("Wait", "Must wait for previous command to finish before running new one", parent=self)
 
 	def destroy(self):
 		self.save_exclusions()
