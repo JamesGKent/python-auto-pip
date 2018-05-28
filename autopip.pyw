@@ -42,16 +42,13 @@ class PythonInstalls():
 			self.installs[ver] = winreg.QueryValue(subkey, 'InstallPath')
 		
 	def __search_keys(self):
-		try:
-			lmk = winreg.OpenKey(winreg.HKEY_LOCAL_MACHINE, 'SOFTWARE\\Python\\PythonCore')
-			self.__search_key(lmk)
-		except FileNotFoundError:
-			pass
-		try:
-			cuk = winreg.OpenKey(winreg.HKEY_CURRENT_USER, 'SOFTWARE\\Python\\PythonCore')
-			self.__search_key(cuk)
-		except FileNotFoundError:
-			pass
+		for key in [winreg.HKEY_LOCAL_MACHINE, winreg.HKEY_CURRENT_USER]:
+			for path in ['SOFTWARE\\Python\\PythonCore', 'SOFTWARE\\Wow6432Node\\Python\\PythonCore']:
+				try:
+					k = winreg.OpenKey(key, path)
+					self.__search_key(k)
+				except FileNotFoundError:
+					pass
 			
 	def find(self):
 		if winreg:
