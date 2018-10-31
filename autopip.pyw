@@ -1,5 +1,17 @@
 #!python3
 
+import ctypes, sys
+
+def is_admin():
+	try:
+		return ctypes.windll.shell32.IsUserAnAdmin()
+	except:
+		return False
+
+if not is_admin():
+	ctypes.windll.shell32.ShellExecuteW(None, 'runas', sys.executable, __file__, None, 1)
+	sys.exit(1)
+
 try:
 	import tkinter as tk
 	from tkinter import ttk, messagebox, filedialog
@@ -18,7 +30,7 @@ try:
 except ImportError:
 	winreg = None
 	
-import sys, os
+import os
 import subprocess
 
 startupinfo = subprocess.STARTUPINFO()
